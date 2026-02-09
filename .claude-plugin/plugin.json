@@ -1,0 +1,19 @@
+{
+  "name": "perf-audit",
+  "version": "1.0.0",
+  "description": "A Claude Code skill that runs comprehensive performance audits on Next.js applications — Lighthouse, Core Web Vitals, bundle analysis, and more.",
+  "author": {
+    "name": "Fares Abdelghany",
+    "url": "https://github.com/Faresabdelghany"
+  },
+  "repository": "https://github.com/Faresabdelghany/Perf-audit-skill",
+  "license": "MIT",
+  "keywords": [
+    "performance",
+    "lighthouse",
+    "nextjs",
+    "web-vitals",
+    "bundle-analysis",
+    "playwright"
+  ]
+}

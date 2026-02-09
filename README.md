@@ -1,10 +1,10 @@
-# Perf Audit Skill
+# Perf Audit Plugin
 
-A [Claude Code](https://claude.ai/code) skill that runs comprehensive performance audits on Next.js web applications.
+A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performance audits on Next.js web applications.
 
 ## What it does
 
-When you say "check performance", "run lighthouse", "audit speed", or `/perf`, Claude will:
+When you say "check performance", "run lighthouse", "audit speed", or `/perf-audit:perf-audit`, Claude will:
 
 1. **Discover all routes** in your Next.js app automatically
 2. **Measure page load metrics** (FCP, LCP, CLS, TTFB, DOM count, transfer size) using Playwright
@@ -24,27 +24,36 @@ When you say "check performance", "run lighthouse", "audit speed", or `/perf`, C
 | `interactions` | UI interaction timing only |
 | `vitals` | Core Web Vitals summary |
 
-Usage: `/perf` or `/perf lighthouse`
+Usage: `/perf-audit:perf-audit` or `/perf-audit:perf-audit lighthouse`
 
 ## Installation
 
-### Claude Code (CLI)
+### As a Plugin (Recommended)
 
-Copy the skill to your project:
+Add the marketplace and install:
+
+```bash
+/plugin marketplace add Faresabdelghany/Perf-audit-skill
+/plugin install perf-audit@perf-audit
+```
+
+### Manual Installation
+
+Copy the skill directly to your project:
 
 ```bash
 mkdir -p .claude/skills/perf-audit
-cp SKILL.md .claude/skills/perf-audit/SKILL.md
+cp skills/perf-audit/SKILL.md .claude/skills/perf-audit/SKILL.md
 ```
 
 Or to your user-level skills (available in all projects):
 
 ```bash
 mkdir -p ~/.claude/skills/perf-audit
-cp SKILL.md ~/.claude/skills/perf-audit/SKILL.md
+cp skills/perf-audit/SKILL.md ~/.claude/skills/perf-audit/SKILL.md
 ```
 
-### Prerequisites
+## Prerequisites
 
 - **Next.js** application
 - **Playwright** installed (`npx playwright install chromium`)
@@ -76,6 +85,20 @@ The skill flags any page exceeding:
 
 Lighthouse: Performance 92 | Accessibility 98 | Best Practices 100 | SEO 100
 Bundle: 487 kB total (142 chunks)
+```
+
+## Plugin Structure
+
+```
+Perf-audit-skill/
+├── .claude-plugin/
+│   ├── plugin.json          # Plugin manifest
+│   └── marketplace.json     # Marketplace config
+├── skills/
+│   └── perf-audit/
+│       └── SKILL.md         # The skill definition
+├── README.md
+└── LICENSE
 ```
 
 ## License
