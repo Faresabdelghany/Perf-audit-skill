@@ -1,6 +1,6 @@
 ---
 name: perf-audit
-description: Run a comprehensive performance audit on a Next.js web application. Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", or "speed test". Measures FCP, LCP, CLS, TTFB, bundle size, and Lighthouse scores across all pages.
+description: Run a comprehensive performance audit on a web application (Next.js, React, .NET). Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", or "speed test". Measures FCP, LCP, CLS, TTFB, bundle size, and Lighthouse scores across all pages.
 argument-hint: [target]
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, WebFetch, Task
@@ -22,9 +22,8 @@ Target: $ARGUMENTS (defaults to "full" if not specified).
 
 ## Prerequisites
 
-1. The project must be a Next.js application
-2. Playwright must be installed (`npx playwright install chromium`)
-3. For authenticated pages, test credentials in `.env.local`:
+1. Playwright must be installed (`npx playwright install chromium`)
+2. For authenticated pages, test credentials in `.env.local`:
    ```
    TEST_USER_EMAIL=<email>
    TEST_USER_PASSWORD=<password>
@@ -34,17 +33,61 @@ If missing, tell the user to set them up before running the audit.
 
 ## Workflow
 
+### 0. Auto-Detect Framework
+
+Before anything else, detect what framework the project uses. Check in order:
+
+| Priority | Detection signal | Framework |
+|----------|-----------------|-----------|
+| 1 | `next.config.*` exists in project root | **Next.js** |
+| 2 | `vite.config.*` exists AND `react` in `package.json` dependencies | **React (Vite)** |
+| 3 | `react-scripts` in `package.json` dependencies | **React (CRA)** |
+| 4 | `*.csproj` or `*.sln` files exist in project root | **.NET** |
+| 5 | None of the above | **Ask user** for framework and base URL |
+
+Use `Glob` to check for these files. Once detected, announce the framework to the user and proceed.
+
 ### 1. Discover Application Routes
 
-Before auditing, scan the project to discover all routes:
+Scan the project to discover all routes. The approach depends on the detected framework:
 
-- Read the `app/` directory structure to find all pages (look for `page.tsx` or `page.js` files)
+**Next.js:**
+- Read the `app/` directory structure — look for `page.tsx` or `page.js` files
+- If `app/` doesn't exist, check `pages/` directory for `index.tsx`, `[slug].tsx`, etc.
 - Identify public vs. authenticated routes (check for auth middleware, layout auth checks)
 - Identify detail/dynamic routes (e.g., `/projects/[id]`)
-- Check for sidebar or navigation components to find all user-facing pages
-- Group routes into: public pages, authenticated pages, detail pages
 
-### 2. Page Load Audit (Playwright)
+**React (Vite / CRA):**
+- Search `src/` for router configuration — look for `react-router-dom` imports
+- Parse route definitions in files like `App.tsx`, `router.tsx`, `routes.tsx`, or `main.tsx`
+- Look for `<Route path="..." />`, `createBrowserRouter`, or `createRoutesFromElements` calls
+- Extract path strings from route definitions
+- Check for auth guards / protected route wrappers to distinguish public vs. authenticated routes
+
+**.NET:**
+- Check if the project uses Razor Pages (`Pages/` directory with `.cshtml` files)
+- Check if it uses MVC (`Controllers/` directory with `*Controller.cs` files)
+- Check `Program.cs` for minimal API endpoints (`MapGet`, `MapPost`, `MapControllerRoute`)
+- For Razor Pages: each `.cshtml` file = a route (e.g., `Pages/Index.cshtml` → `/`)
+- For MVC: parse controller actions and `[Route]` / `[HttpGet]` attributes
+- For minimal APIs: parse `MapGet`/`MapPost` calls in `Program.cs`
+
+**For all frameworks:** Group routes into: public pages, authenticated pages, detail pages. Check for sidebar or navigation components to find all user-facing pages.
+
+### 2. Start Dev Server
+
+Start the dev server if one isn't already running. The command depends on the framework:
+
+| Framework | Start command | Default port | Health check URL |
+|-----------|-------------|-------------|-----------------|
+| Next.js | `npm run dev` or `pnpm dev` | 3000 | `http://localhost:3000` |
+| React (Vite) | `npm run dev` or `pnpm dev` | 5173 | `http://localhost:5173` |
+| React (CRA) | `npm start` or `pnpm start` | 3000 | `http://localhost:3000` |
+| .NET | `dotnet run` | 5000 (http) / 5001 (https) | `http://localhost:5000` |
+
+Check if the port is already in use before starting. If the server is already running, use the existing one.
+
+### 3. Page Load Audit (Playwright)
 
 For each discovered route, use Playwright to measure performance metrics.
 
@@ -93,7 +136,7 @@ For **authenticated routes**:
 3. Submit the form and wait for redirect
 4. Then navigate to each authenticated route using the same browser context
 
-### 3. Lighthouse Audit
+### 4. Lighthouse Audit
 
 Run Lighthouse CLI on each page:
 
@@ -118,15 +161,18 @@ Note: Lighthouse may exit with code 1 on Windows due to Chrome temp dir cleanup 
 
 If any authenticated page shows redirect to login, the auth cookies may have expired. Re-authenticate and retry.
 
-### 4. Bundle Size Analysis
+### 5. Bundle Size Analysis
 
-Run Next.js build with webpack bundle analyzer:
+Run the framework-specific build command and analyze the output:
 
-```bash
-ANALYZE=true npx next build
-```
+| Framework | Build command | Output directory | Chunk files |
+|-----------|-------------|-----------------|-------------|
+| Next.js | `npx next build` | `.next/static/chunks/` | `*.js` |
+| React (Vite) | `npm run build` | `dist/assets/` | `*.js`, `*.css` |
+| React (CRA) | `npm run build` | `build/static/js/` | `*.js` |
+| .NET | `dotnet publish -c Release` | `bin/Release/net*/publish/wwwroot/` | JS/CSS in `_framework/` or bundled assets |
 
-Then list the top JS chunks by size from `.next/static/chunks/`:
+Then list the top JS chunks by size from the output directory:
 
 ```bash
 node -e "
@@ -142,7 +188,7 @@ function walk(dir) {
   }
   return r;
 }
-const files = walk('.next/static/chunks').sort((a,b) => b.size - a.size);
+const files = walk('<OUTPUT_DIR>').sort((a,b) => b.size - a.size);
 let total = 0;
 files.forEach(f => total += f.size);
 console.log('Top 10 chunks:');
@@ -151,13 +197,20 @@ console.log('Total: ' + (total/1024).toFixed(0) + ' kB (' + files.length + ' chu
 "
 ```
 
-### 5. Core Web Vitals
+Replace `<OUTPUT_DIR>` with the correct path for the detected framework.
+
+For **Next.js** with bundle analyzer, optionally run with `ANALYZE=true`:
+```bash
+ANALYZE=true npx next build
+```
+
+### 6. Core Web Vitals
 
 Check for `@vercel/speed-insights` or `web-vitals` in `package.json` dependencies.
 
 If the app is deployed, remind the user to check real-user metrics in their hosting provider's dashboard (Vercel Speed Insights, Google Search Console, etc.).
 
-### 6. Interaction Timing (if target is `full` or `interactions`)
+### 7. Interaction Timing (if target is `full` or `interactions`)
 
 Test common UI interactions:
 
@@ -174,7 +227,9 @@ await page.waitForSelector('[data-command-palette]', { state: 'visible' });
 const duration = Date.now() - start;
 ```
 
-### 7. Comparison with Previous Run
+Note: The specific selectors and interactions depend on the application. Adapt the interaction tests based on what the route discovery reveals about the app's UI.
+
+### 8. Comparison with Previous Run
 
 If a previous results file exists (e.g., `perf-audit-results.json`), load it and compare:
 
@@ -188,14 +243,15 @@ Save current results for future comparison.
 
 Present a comprehensive summary covering:
 
-1. **Page Metrics Table** — All pages with FCP, LCP, CLS, TTFB, DOM count, transfer size
-2. **Lighthouse Scores** — Performance, Accessibility, Best Practices, SEO per page
-3. **Bundle Sizes** — Total JS, top 10 chunks
-4. **Interaction Timing** — Command palette, modals, navigation transitions
-5. **Threshold Checks** — Flag any page exceeding:
+1. **Framework Detected** — Which framework was identified and how
+2. **Page Metrics Table** — All pages with FCP, LCP, CLS, TTFB, DOM count, transfer size
+3. **Lighthouse Scores** — Performance, Accessibility, Best Practices, SEO per page
+4. **Bundle Sizes** — Total JS, top 10 chunks
+5. **Interaction Timing** — Command palette, modals, navigation transitions
+6. **Threshold Checks** — Flag any page exceeding:
    - LCP > 2.5s
    - FCP > 1.8s
    - CLS > 0.1
    - TTFB > 800ms
-6. **Regressions** — Compare with previous run if available
-7. **Recommendations** — Suggest specific fixes for any failing metrics
+7. **Regressions** — Compare with previous run if available
+8. **Recommendations** — Suggest specific fixes for any failing metrics

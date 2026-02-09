@@ -1,17 +1,29 @@
 # Perf Audit Plugin
 
-A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performance audits on Next.js web applications.
+A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performance audits on web applications — supports **Next.js**, **React (Vite/CRA)**, and **.NET**.
+
+## Supported Frameworks
+
+| Framework | Detection | Route Discovery |
+|-----------|-----------|-----------------|
+| **Next.js** | `next.config.*` in project root | `app/` or `pages/` directory |
+| **React (Vite)** | `vite.config.*` + `react` in deps | Router config in `src/` |
+| **React (CRA)** | `react-scripts` in deps | Router config in `src/` |
+| **.NET** | `*.csproj` or `*.sln` files | Razor Pages, MVC Controllers, or Minimal APIs |
+
+The framework is auto-detected. If detection fails, you'll be asked to specify.
 
 ## What it does
 
 When you say "check performance", "run lighthouse", "audit speed", or `/perf-audit:perf-audit`, Claude will:
 
-1. **Discover all routes** in your Next.js app automatically
-2. **Measure page load metrics** (FCP, LCP, CLS, TTFB, DOM count, transfer size) using Playwright
-3. **Run Lighthouse audits** (Performance, Accessibility, Best Practices, SEO)
-4. **Analyze bundle size** (top chunks, total JS)
-5. **Flag regressions** against previous runs
-6. **Suggest fixes** for any failing metrics
+1. **Auto-detect your framework** (Next.js, React, or .NET)
+2. **Discover all routes** in your app automatically
+3. **Measure page load metrics** (FCP, LCP, CLS, TTFB, DOM count, transfer size) using Playwright
+4. **Run Lighthouse audits** (Performance, Accessibility, Best Practices, SEO)
+5. **Analyze bundle size** (top chunks, total JS)
+6. **Flag regressions** against previous runs
+7. **Suggest fixes** for any failing metrics
 
 ## Targets
 
@@ -55,13 +67,55 @@ cp skills/perf-audit/SKILL.md ~/.claude/skills/perf-audit/SKILL.md
 
 ## Prerequisites
 
-- **Next.js** application
 - **Playwright** installed (`npx playwright install chromium`)
-- For authenticated pages, add test credentials to `.env.local`:
+- For authenticated pages, add test credentials to `.env.local` (or your framework's env file):
   ```
   TEST_USER_EMAIL=<email>
   TEST_USER_PASSWORD=<password>
   ```
+
+### Framework-specific
+
+| Framework | Additional requirement |
+|-----------|----------------------|
+| Next.js | Node.js 18+ |
+| React (Vite/CRA) | Node.js 18+ |
+| .NET | .NET SDK 6.0+ |
+
+## Examples
+
+### Next.js
+
+```
+> /perf-audit:perf-audit
+
+Detected: Next.js (found next.config.mjs)
+Discovering routes from app/ directory...
+Found 12 routes (3 public, 9 authenticated)
+...
+```
+
+### React (Vite)
+
+```
+> /perf-audit:perf-audit
+
+Detected: React (Vite) (found vite.config.ts + react in package.json)
+Discovering routes from src/router.tsx...
+Found 8 routes (2 public, 6 authenticated)
+...
+```
+
+### .NET
+
+```
+> /perf-audit:perf-audit
+
+Detected: .NET (found MyApp.csproj)
+Discovering routes from Controllers/ and Pages/...
+Found 15 routes (5 public, 10 authenticated)
+...
+```
 
 ## Thresholds
 
@@ -77,6 +131,8 @@ The skill flags any page exceeding:
 ## Example Output
 
 ```
+Framework: Next.js (auto-detected)
+
 | Page        | FCP    | LCP    | CLS   | TTFB   | DOM  | Transfer |
 |-------------|--------|--------|-------|--------|------|----------|
 | /           | 0.8s   | 1.2s   | 0.01  | 120ms  | 450  | 245 kB   |
