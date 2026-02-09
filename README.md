@@ -1,12 +1,15 @@
 # Perf Audit Plugin
 
-A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performance audits on web applications — supports **Next.js**, **React (Vite/CRA)**, and **.NET**.
+A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performance audits on web applications — supports **Next.js**, **Angular**, **Vue**, **React (Vite/CRA)**, and **.NET**.
 
 ## Supported Frameworks
 
 | Framework | Detection | Route Discovery |
 |-----------|-----------|-----------------|
 | **Next.js** | `next.config.*` in project root | `app/` or `pages/` directory |
+| **Angular** | `angular.json` in project root | Routing modules (`app.routes.ts`, `*-routing.module.ts`) |
+| **Vue (Vite)** | `vite.config.*` + `vue` in deps | `vue-router` config in `src/router/` |
+| **Vue (CLI)** | `vue.config.*` or `@vue/cli-service` in deps | `vue-router` config in `src/router/` |
 | **React (Vite)** | `vite.config.*` + `react` in deps | Router config in `src/` |
 | **React (CRA)** | `react-scripts` in deps | Router config in `src/` |
 | **.NET** | `*.csproj` or `*.sln` files | Razor Pages, MVC Controllers, or Minimal APIs |
@@ -17,7 +20,7 @@ The framework is auto-detected. If detection fails, you'll be asked to specify.
 
 When you say "check performance", "run lighthouse", "audit speed", or `/perf-audit:perf-audit`, Claude will:
 
-1. **Auto-detect your framework** (Next.js, React, or .NET)
+1. **Auto-detect your framework** (Next.js, Angular, Vue, React, or .NET)
 2. **Discover all routes** in your app automatically
 3. **Measure page load metrics** (FCP, LCP, CLS, TTFB, DOM count, transfer size) using Playwright
 4. **Run Lighthouse audits** (Performance, Accessibility, Best Practices, SEO)
@@ -79,6 +82,8 @@ cp skills/perf-audit/SKILL.md ~/.claude/skills/perf-audit/SKILL.md
 | Framework | Additional requirement |
 |-----------|----------------------|
 | Next.js | Node.js 18+ |
+| Angular | Node.js 18+, Angular CLI (`npm i -g @angular/cli`) |
+| Vue (Vite/CLI) | Node.js 18+ |
 | React (Vite/CRA) | Node.js 18+ |
 | .NET | .NET SDK 6.0+ |
 
@@ -92,6 +97,28 @@ cp skills/perf-audit/SKILL.md ~/.claude/skills/perf-audit/SKILL.md
 Detected: Next.js (found next.config.mjs)
 Discovering routes from app/ directory...
 Found 12 routes (3 public, 9 authenticated)
+...
+```
+
+### Angular
+
+```
+> /perf-audit:perf-audit
+
+Detected: Angular (found angular.json)
+Discovering routes from app.routes.ts...
+Found 10 routes (3 public, 7 authenticated)
+...
+```
+
+### Vue
+
+```
+> /perf-audit:perf-audit
+
+Detected: Vue (Vite) (found vite.config.ts + vue in package.json)
+Discovering routes from src/router/index.ts...
+Found 9 routes (2 public, 7 authenticated)
 ...
 ```
 

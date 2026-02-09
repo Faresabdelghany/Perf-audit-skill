@@ -1,7 +1,7 @@
 {
   "name": "perf-audit",
-  "version": "1.1.0",
-  "description": "A Claude Code skill that runs comprehensive performance audits on web applications (Next.js, React, .NET) — Lighthouse, Core Web Vitals, bundle analysis, and more.",
+  "version": "1.2.0",
+  "description": "A Claude Code skill that runs comprehensive performance audits on web applications (Next.js, React, Angular, Vue, .NET) — Lighthouse, Core Web Vitals, bundle analysis, and more.",
   "author": {
     "name": "Fares Abdelghany",
     "url": "https://github.com/Faresabdelghany"
@@ -13,6 +13,8 @@
     "lighthouse",
     "nextjs",
     "react",
+    "angular",
+    "vue",
     "vite",
     "dotnet",
     "web-vitals",

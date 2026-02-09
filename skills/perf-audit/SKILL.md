@@ -1,6 +1,6 @@
 ---
 name: perf-audit
-description: Run a comprehensive performance audit on a web application (Next.js, React, .NET). Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", or "speed test". Measures FCP, LCP, CLS, TTFB, bundle size, and Lighthouse scores across all pages.
+description: Run a comprehensive performance audit on a web application (Next.js, React, Angular, Vue, .NET). Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", or "speed test". Measures FCP, LCP, CLS, TTFB, bundle size, and Lighthouse scores across all pages.
 argument-hint: [target]
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, WebFetch, Task
@@ -40,10 +40,13 @@ Before anything else, detect what framework the project uses. Check in order:
 | Priority | Detection signal | Framework |
 |----------|-----------------|-----------|
 | 1 | `next.config.*` exists in project root | **Next.js** |
-| 2 | `vite.config.*` exists AND `react` in `package.json` dependencies | **React (Vite)** |
-| 3 | `react-scripts` in `package.json` dependencies | **React (CRA)** |
-| 4 | `*.csproj` or `*.sln` files exist in project root | **.NET** |
-| 5 | None of the above | **Ask user** for framework and base URL |
+| 2 | `angular.json` exists in project root | **Angular** |
+| 3 | `vite.config.*` exists AND `vue` in `package.json` dependencies | **Vue (Vite)** |
+| 4 | `vue.config.*` exists OR `@vue/cli-service` in `package.json` dependencies | **Vue (CLI)** |
+| 5 | `vite.config.*` exists AND `react` in `package.json` dependencies | **React (Vite)** |
+| 6 | `react-scripts` in `package.json` dependencies | **React (CRA)** |
+| 7 | `*.csproj` or `*.sln` files exist in project root | **.NET** |
+| 8 | None of the above | **Ask user** for framework and base URL |
 
 Use `Glob` to check for these files. Once detected, announce the framework to the user and proceed.
 
@@ -56,6 +59,18 @@ Scan the project to discover all routes. The approach depends on the detected fr
 - If `app/` doesn't exist, check `pages/` directory for `index.tsx`, `[slug].tsx`, etc.
 - Identify public vs. authenticated routes (check for auth middleware, layout auth checks)
 - Identify detail/dynamic routes (e.g., `/projects/[id]`)
+
+**Angular:**
+- Look for routing modules — check `app-routing.module.ts`, `app.routes.ts`, or files with `RouterModule.forRoot()` / `provideRouter()` calls
+- Parse route definitions: `{ path: '...', component: ... }` objects in `Routes` arrays
+- Check for `loadChildren` / `loadComponent` for lazy-loaded routes
+- Look for `canActivate` / `canMatch` guards to distinguish public vs. authenticated routes
+
+**Vue (Vite / CLI):**
+- Search `src/` for `vue-router` configuration — check `src/router/index.ts`, `src/router.ts`, or files importing `createRouter`
+- Parse route definitions: `{ path: '...', component: ... }` objects passed to `createRouter()`
+- Check for `meta.requiresAuth` or navigation guards (`beforeEach`) to distinguish public vs. authenticated routes
+- Look for `children` arrays for nested routes
 
 **React (Vite / CRA):**
 - Search `src/` for router configuration — look for `react-router-dom` imports
@@ -81,6 +96,9 @@ Start the dev server if one isn't already running. The command depends on the fr
 | Framework | Start command | Default port | Health check URL |
 |-----------|-------------|-------------|-----------------|
 | Next.js | `npm run dev` or `pnpm dev` | 3000 | `http://localhost:3000` |
+| Angular | `ng serve` or `npm start` | 4200 | `http://localhost:4200` |
+| Vue (Vite) | `npm run dev` or `pnpm dev` | 5173 | `http://localhost:5173` |
+| Vue (CLI) | `npm run serve` | 8080 | `http://localhost:8080` |
 | React (Vite) | `npm run dev` or `pnpm dev` | 5173 | `http://localhost:5173` |
 | React (CRA) | `npm start` or `pnpm start` | 3000 | `http://localhost:3000` |
 | .NET | `dotnet run` | 5000 (http) / 5001 (https) | `http://localhost:5000` |
@@ -168,6 +186,9 @@ Run the framework-specific build command and analyze the output:
 | Framework | Build command | Output directory | Chunk files |
 |-----------|-------------|-----------------|-------------|
 | Next.js | `npx next build` | `.next/static/chunks/` | `*.js` |
+| Angular | `ng build` | `dist/<project-name>/browser/` | `*.js` |
+| Vue (Vite) | `npm run build` | `dist/assets/` | `*.js`, `*.css` |
+| Vue (CLI) | `npm run build` | `dist/js/` | `*.js` |
 | React (Vite) | `npm run build` | `dist/assets/` | `*.js`, `*.css` |
 | React (CRA) | `npm run build` | `build/static/js/` | `*.js` |
 | .NET | `dotnet publish -c Release` | `bin/Release/net*/publish/wwwroot/` | JS/CSS in `_framework/` or bundled assets |
