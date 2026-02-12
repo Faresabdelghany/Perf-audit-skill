@@ -16,6 +16,57 @@ A [Claude Code](https://claude.ai/code) plugin that runs comprehensive performan
 
 The framework is auto-detected. If detection fails, you'll be asked to specify.
 
+## How it works
+
+This is a **Claude Code skill** — a prompt-based plugin, not a standalone binary. The `SKILL.md` file contains step-by-step instructions that Claude follows using its built-in tools (Bash, Read, Glob, Grep).
+
+```
+You type "/perf-audit" or "check performance"
+         │
+         ▼
+┌─────────────────────────────┐
+│  1. Read your codebase      │  Uses Glob + Read to scan project files
+│     Detect framework        │  (next.config.js, angular.json, package.json, etc.)
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  2. Discover routes         │  Reads router config (app/, app.routes.ts, src/router/)
+│     Detect auth             │  Reads middleware, guards, and deps to find protected pages
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  3. Ask for credentials     │  "I found 9 protected routes. Your app uses NextAuth."
+│     (if auth needed)        │  "What test credentials should I use?"
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  4. Start dev server        │  Runs npm run dev (or equivalent) via Bash
+│     Launch Playwright       │  Opens headless Chromium browser
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  5. Audit every page        │  Navigates to each route, collects metrics via
+│                             │  Performance API (FCP, LCP, CLS, TTFB)
+│                             │  Checks images, fonts, third-party scripts
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  6. Run Lighthouse          │  npx lighthouse per page (Perf, A11y, BP, SEO)
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  7. Analyze build           │  Runs production build, walks output directory
+│                             │  Reports top JS chunks by size
+└────────────┬────────────────┘
+             ▼
+┌─────────────────────────────┐
+│  8. Generate report         │  Metrics table, threshold violations, image/font/3P
+│     with recommendations    │  issues, regressions, and ranked fixes
+└─────────────────────────────┘
+```
+
+There's no compiled code or binary — it's instructions that Claude follows using the tools it already has.
+
 ## What it does
 
 When you say "check performance", "run lighthouse", "audit speed", or `/perf-audit:perf-audit`, Claude will:
