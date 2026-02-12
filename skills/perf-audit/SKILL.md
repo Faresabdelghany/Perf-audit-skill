@@ -30,9 +30,10 @@ Target: $ARGUMENTS (defaults to "full" if not specified).
 
 | Target | What it runs |
 |--------|-------------|
-| `full` (default) | Pages + interactions + Lighthouse + bundle + image/font/3P checks |
+| `full` (default) | Pages + navigation + interactions + Lighthouse + bundle + image/font/3P checks |
 | `pages` | Page load metrics only (FCP, LCP, CLS, TTFB) |
 | `lighthouse` | Lighthouse audit only (Perf, A11y, BP, SEO) |
+| `navigation` | Client-side route transition timing (what users actually feel) |
 | `interactions` | UI interaction timing only |
 | `bundle` | Bundle size analysis only |
 | `vitals` | Core Web Vitals summary |
@@ -43,6 +44,7 @@ Target: $ARGUMENTS (defaults to "full" if not specified).
 | FCP | > 1.8s |
 | CLS | > 0.1 |
 | TTFB | > 800ms |
+| Route transition | > 3000ms |
 
 ## Prerequisites
 
@@ -258,18 +260,42 @@ From `page-metrics.js` results, check font loading strategy:
 
 Check for `@vercel/speed-insights` or `web-vitals` in `package.json`. If the app is deployed, remind user to check real-user metrics (Vercel Speed Insights, Google Search Console).
 
-### 11. Interaction Timing (if target is `full` or `interactions`)
+### 11. Navigation Performance (if target is `full` or `navigation`)
+
+Measure client-side route transitions headlessly — the "real feel" when users click between pages. This is what Lighthouse **cannot** measure: SPA navigation using the app's router (not full page loads).
+
+**If `e2e/navigation-performance.spec.ts` exists**, run it (headless by default):
+```bash
+npx playwright test navigation-performance.spec.ts --project=chromium --reporter=list
+```
+
+**Otherwise**, run a headless inline script that:
+1. Authenticates (reuse browser context from Step 2)
+2. Clicks each sidebar/nav link and measures time from click to content visible
+3. Counts API requests per navigation (flags > 15 as excessive)
+4. Reports timing per route transition
+
+**Thresholds:**
+- Route transition: < 3000ms (click to content visible)
+- API calls per navigation: flag > 15 as excessive
+
+If transitions are slow, investigate:
+1. **Waterfall requests** — fix with parallel data fetching
+2. **No caching** — fix with SWR/React Query stale-while-revalidate
+3. **Heavy re-renders** — fix with React.memo, useMemo
+4. **Large payloads** — fix with field selection / pagination
+
+### 12. Interaction Timing (if target is `full` or `interactions`)
 
 Test common UI interactions using Playwright timing:
 
 - **Search/command palette**: Keyboard shortcut to visible
 - **Modal/dialog**: Click to fully rendered
-- **Navigation**: Sidebar click to new content visible
 - **Form submit**: Submit to response
 
 Adapt selectors based on what route discovery reveals about the app's UI.
 
-### 12. Comparison with Previous Run
+### 13. Comparison with Previous Run
 
 If `perf-audit-results.json` exists, compare metrics:
 - Flag regressions (>10% worse)
@@ -285,14 +311,15 @@ Present results covering:
 1. **Framework & Rendering** — Framework, rendering strategy per route (SSR/SSG/CSR)
 2. **Page Metrics Table** — FCP, LCP (with element), CLS (with sources), TTFB, DOM count, transfer size per page
 3. **Lighthouse Scores** — Performance, Accessibility, Best Practices, SEO
-4. **Bundle Sizes** — Total JS, top 10 chunks
-5. **Image Optimization** — Issues found (missing lazy load, no dimensions, wrong format)
-6. **Third-Party Scripts** — External scripts by size, blocking time
-7. **Font Loading** — Font strategy issues
-8. **Interaction Timing** — If measured
-9. **Threshold Violations** — Any metric exceeding thresholds above
-10. **Regressions** — Delta from previous run if available
-11. **Recommendations** — Specific, actionable fixes ranked by impact
+4. **Navigation Timing** — Client-side route transition times (click to content visible)
+5. **Bundle Sizes** — Total JS, top 10 chunks
+6. **Image Optimization** — Issues found (missing lazy load, no dimensions, wrong format)
+7. **Third-Party Scripts** — External scripts by size, blocking time
+8. **Font Loading** — Font strategy issues
+9. **Interaction Timing** — If measured
+10. **Threshold Violations** — Any metric exceeding thresholds above
+11. **Regressions** — Delta from previous run if available
+12. **Recommendations** — Specific, actionable fixes ranked by impact
 
 ## Common Mistakes
 
