@@ -179,7 +179,9 @@ Perf-audit-skill/
 │   └── marketplace.json     # Marketplace config
 ├── skills/
 │   └── perf-audit/
-│       └── SKILL.md         # The skill definition
+│       ├── SKILL.md           # The skill definition
+│       ├── page-metrics.js    # Playwright metrics collection script
+│       └── bundle-analysis.js # Bundle size analysis script
 ├── README.md
 └── LICENSE
 ```

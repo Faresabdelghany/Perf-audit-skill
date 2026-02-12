@@ -1,6 +1,6 @@
 ---
 name: perf-audit
-description: Run a comprehensive performance audit on a web application (Next.js, React, Angular, Vue, .NET). Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", or "speed test". Measures FCP, LCP, CLS, TTFB, bundle size, and Lighthouse scores across all pages.
+description: Use when asked to "test speed", "check performance", "run lighthouse", "audit performance", "speed test", or diagnose slow page loads, high LCP, layout shifts, or large bundles. Supports Next.js, React, Angular, Vue, and .NET projects.
 argument-hint: [target]
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, WebFetch, Task
@@ -11,19 +11,43 @@ allowed-tools: Bash, Read, Grep, Glob, WebFetch, Task
 Run a comprehensive performance audit on the current web application.
 Target: $ARGUMENTS (defaults to "full" if not specified).
 
-## Targets
+## When to Use
 
-- `full` (default) — All pages, interactions, Lighthouse, and bundle analysis
-- `pages` — Page load metrics only (public + authenticated)
-- `lighthouse` — Lighthouse detailed audit
-- `interactions` — UI interaction timing
-- `bundle` — Bundle size analysis only
-- `vitals` — Core Web Vitals summary
+- User asks to "check performance", "run lighthouse", "audit speed", "test speed"
+- Page loads feel slow — high FCP, LCP, or TTFB
+- Layout shifts or CLS issues reported
+- Bundle size concerns or JS bloat
+- Before a production deploy to catch regressions
+- Comparing performance after optimization changes
+
+## When NOT to Use
+
+- API-only backends with no frontend (use load testing tools instead)
+- Static sites with no JS (Lighthouse alone suffices)
+- Mobile-native apps (use platform-specific profilers)
+
+## Quick Reference
+
+| Target | What it runs |
+|--------|-------------|
+| `full` (default) | Pages + interactions + Lighthouse + bundle |
+| `pages` | Page load metrics only (FCP, LCP, CLS, TTFB) |
+| `lighthouse` | Lighthouse audit only (Perf, A11y, BP, SEO) |
+| `interactions` | UI interaction timing only |
+| `bundle` | Bundle size analysis only |
+| `vitals` | Core Web Vitals summary |
+
+| Metric | Threshold (flags if exceeded) |
+|--------|-------------------------------|
+| LCP | > 2.5s |
+| FCP | > 1.8s |
+| CLS | > 0.1 |
+| TTFB | > 800ms |
 
 ## Prerequisites
 
-1. Playwright must be installed (`npx playwright install chromium`)
-2. For authenticated pages, test credentials in `.env.local`:
+1. Playwright installed: `npx playwright install chromium`
+2. For authenticated pages, set credentials in `.env.local`:
    ```
    TEST_USER_EMAIL=<email>
    TEST_USER_PASSWORD=<password>
@@ -35,124 +59,60 @@ If missing, tell the user to set them up before running the audit.
 
 ### 0. Auto-Detect Framework
 
-Before anything else, detect what framework the project uses. Check in order:
+Detect the project framework using `Glob`. Check in priority order:
 
 | Priority | Detection signal | Framework |
 |----------|-----------------|-----------|
-| 1 | `next.config.*` exists in project root | **Next.js** |
-| 2 | `angular.json` exists in project root | **Angular** |
-| 3 | `vite.config.*` exists AND `vue` in `package.json` dependencies | **Vue (Vite)** |
-| 4 | `vue.config.*` exists OR `@vue/cli-service` in `package.json` dependencies | **Vue (CLI)** |
-| 5 | `vite.config.*` exists AND `react` in `package.json` dependencies | **React (Vite)** |
-| 6 | `react-scripts` in `package.json` dependencies | **React (CRA)** |
-| 7 | `*.csproj` or `*.sln` files exist in project root | **.NET** |
-| 8 | None of the above | **Ask user** for framework and base URL |
+| 1 | `next.config.*` | **Next.js** |
+| 2 | `angular.json` | **Angular** |
+| 3 | `vite.config.*` + `vue` in deps | **Vue (Vite)** |
+| 4 | `vue.config.*` or `@vue/cli-service` in deps | **Vue (CLI)** |
+| 5 | `vite.config.*` + `react` in deps | **React (Vite)** |
+| 6 | `react-scripts` in deps | **React (CRA)** |
+| 7 | `*.csproj` or `*.sln` | **.NET** |
+| 8 | None matched | **Ask user** |
 
-Use `Glob` to check for these files. Once detected, announce the framework to the user and proceed.
+Announce the detected framework and proceed.
 
 ### 1. Discover Application Routes
 
-Scan the project to discover all routes. The approach depends on the detected framework:
+Scan the project to discover all routes. Group into: **public**, **authenticated**, and **detail/dynamic** pages.
 
-**Next.js:**
-- Read the `app/` directory structure — look for `page.tsx` or `page.js` files
-- If `app/` doesn't exist, check `pages/` directory for `index.tsx`, `[slug].tsx`, etc.
-- Identify public vs. authenticated routes (check for auth middleware, layout auth checks)
-- Identify detail/dynamic routes (e.g., `/projects/[id]`)
+**Next.js:** Read `app/` for `page.tsx`/`page.js`, or `pages/` directory. Check auth middleware for route classification.
 
-**Angular:**
-- Look for routing modules — check `app-routing.module.ts`, `app.routes.ts`, or files with `RouterModule.forRoot()` / `provideRouter()` calls
-- Parse route definitions: `{ path: '...', component: ... }` objects in `Routes` arrays
-- Check for `loadChildren` / `loadComponent` for lazy-loaded routes
-- Look for `canActivate` / `canMatch` guards to distinguish public vs. authenticated routes
+**Angular:** Parse `app-routing.module.ts` or `app.routes.ts`. Check `canActivate`/`canMatch` guards for auth routes.
 
-**Vue (Vite / CLI):**
-- Search `src/` for `vue-router` configuration — check `src/router/index.ts`, `src/router.ts`, or files importing `createRouter`
-- Parse route definitions: `{ path: '...', component: ... }` objects passed to `createRouter()`
-- Check for `meta.requiresAuth` or navigation guards (`beforeEach`) to distinguish public vs. authenticated routes
-- Look for `children` arrays for nested routes
+**Vue:** Find `vue-router` config in `src/router/`. Check `meta.requiresAuth` or `beforeEach` guards.
 
-**React (Vite / CRA):**
-- Search `src/` for router configuration — look for `react-router-dom` imports
-- Parse route definitions in files like `App.tsx`, `router.tsx`, `routes.tsx`, or `main.tsx`
-- Look for `<Route path="..." />`, `createBrowserRouter`, or `createRoutesFromElements` calls
-- Extract path strings from route definitions
-- Check for auth guards / protected route wrappers to distinguish public vs. authenticated routes
+**React:** Find `react-router-dom` usage in `App.tsx`, `router.tsx`, or `routes.tsx`. Check for protected route wrappers.
 
-**.NET:**
-- Check if the project uses Razor Pages (`Pages/` directory with `.cshtml` files)
-- Check if it uses MVC (`Controllers/` directory with `*Controller.cs` files)
-- Check `Program.cs` for minimal API endpoints (`MapGet`, `MapPost`, `MapControllerRoute`)
-- For Razor Pages: each `.cshtml` file = a route (e.g., `Pages/Index.cshtml` → `/`)
-- For MVC: parse controller actions and `[Route]` / `[HttpGet]` attributes
-- For minimal APIs: parse `MapGet`/`MapPost` calls in `Program.cs`
+**.NET:** Check Razor Pages (`Pages/*.cshtml`), MVC Controllers (`Controllers/*Controller.cs`), or minimal API endpoints in `Program.cs`.
 
-**For all frameworks:** Group routes into: public pages, authenticated pages, detail pages. Check for sidebar or navigation components to find all user-facing pages.
+Also check sidebar/navigation components to find all user-facing pages.
 
 ### 2. Start Dev Server
 
-Start the dev server if one isn't already running. The command depends on the framework:
+Start the dev server if one isn't already running:
 
-| Framework | Start command | Default port | Health check URL |
-|-----------|-------------|-------------|-----------------|
-| Next.js | `npm run dev` or `pnpm dev` | 3000 | `http://localhost:3000` |
-| Angular | `ng serve` or `npm start` | 4200 | `http://localhost:4200` |
-| Vue (Vite) | `npm run dev` or `pnpm dev` | 5173 | `http://localhost:5173` |
-| Vue (CLI) | `npm run serve` | 8080 | `http://localhost:8080` |
-| React (Vite) | `npm run dev` or `pnpm dev` | 5173 | `http://localhost:5173` |
-| React (CRA) | `npm start` or `pnpm start` | 3000 | `http://localhost:3000` |
-| .NET | `dotnet run` | 5000 (http) / 5001 (https) | `http://localhost:5000` |
+| Framework | Start command | Default port |
+|-----------|-------------|-------------|
+| Next.js | `npm run dev` | 3000 |
+| Angular | `ng serve` | 4200 |
+| Vue (Vite) | `npm run dev` | 5173 |
+| Vue (CLI) | `npm run serve` | 8080 |
+| React (Vite) | `npm run dev` | 5173 |
+| React (CRA) | `npm start` | 3000 |
+| .NET | `dotnet run` | 5000 |
 
-Check if the port is already in use before starting. If the server is already running, use the existing one.
+Check if the port is already in use before starting.
 
 ### 3. Page Load Audit (Playwright)
 
-For each discovered route, use Playwright to measure performance metrics.
+For each discovered route, measure performance metrics using Playwright. See `page-metrics.js` in this directory for the collection script.
 
-Create a temporary script or run inline:
+Metrics collected per page: TTFB, FCP, DOM count, resource count, transfer size, JS/CSS/image bytes.
 
-```javascript
-const { chromium } = require('playwright');
-
-const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext();
-const page = await context.newPage();
-
-// For authenticated routes, log in first
-// Find the login page and fill credentials from env vars
-
-await page.goto(url, { waitUntil: 'networkidle' });
-
-const metrics = await page.evaluate(() => {
-  const nav = performance.getEntriesByType('navigation')[0];
-  const paint = performance.getEntriesByType('paint');
-  const fcp = paint.find(e => e.name === 'first-contentful-paint');
-  const lcp = new Promise(resolve => {
-    new PerformanceObserver(list => {
-      const entries = list.getEntries();
-      resolve(entries[entries.length - 1].startTime);
-    }).observe({ type: 'largest-contentful-paint', buffered: true });
-  });
-  const resources = performance.getEntriesByType('resource');
-
-  return {
-    ttfb: nav.responseStart - nav.requestStart,
-    fcp: fcp?.startTime,
-    domCount: document.querySelectorAll('*').length,
-    resourceCount: resources.length,
-    transferSize: resources.reduce((s, r) => s + (r.transferSize || 0), 0),
-    jsBytes: resources.filter(r => r.initiatorType === 'script').reduce((s, r) => s + (r.transferSize || 0), 0),
-    cssBytes: resources.filter(r => r.initiatorType === 'link' || r.initiatorType === 'style').reduce((s, r) => s + (r.transferSize || 0), 0),
-    imageBytes: resources.filter(r => r.initiatorType === 'img').reduce((s, r) => s + (r.transferSize || 0), 0),
-  };
-});
-```
-
-For **authenticated routes**:
-1. Navigate to the login page
-2. Fill in `TEST_USER_EMAIL` and `TEST_USER_PASSWORD` from environment
-3. Submit the form and wait for redirect
-4. Then navigate to each authenticated route using the same browser context
+For authenticated routes: log in first using env credentials, then navigate using the same browser context.
 
 ### 4. Lighthouse Audit
 
@@ -164,115 +124,68 @@ npx lighthouse <url> --output=json --output-path=./lighthouse-report.json \
   --only-categories=performance,accessibility,best-practices,seo
 ```
 
-For authenticated pages, extract cookies from the Playwright session and pass via `--extra-headers`:
+For authenticated pages, extract cookies from the Playwright session and pass via `--extra-headers='{"Cookie": "<session-cookies>"}'`.
 
-```bash
-npx lighthouse <url> --output=json --output-path=./lighthouse-report.json \
-  --chrome-flags="--headless --no-sandbox" \
-  --extra-headers='{"Cookie": "<session-cookies>"}' \
-  --only-categories=performance,accessibility,best-practices,seo
-```
-
-Parse the JSON output to extract category scores.
-
-Note: Lighthouse may exit with code 1 on Windows due to Chrome temp dir cleanup — this is harmless. Check that the JSON report was written successfully.
-
-If any authenticated page shows redirect to login, the auth cookies may have expired. Re-authenticate and retry.
+Note: Lighthouse may exit with code 1 on Windows due to Chrome temp dir cleanup — this is harmless if the JSON report was written.
 
 ### 5. Bundle Size Analysis
 
-Run the framework-specific build command and analyze the output:
+Run the framework-specific build and analyze output. See `bundle-analysis.js` in this directory.
 
-| Framework | Build command | Output directory | Chunk files |
-|-----------|-------------|-----------------|-------------|
-| Next.js | `npx next build` | `.next/static/chunks/` | `*.js` |
-| Angular | `ng build` | `dist/<project-name>/browser/` | `*.js` |
-| Vue (Vite) | `npm run build` | `dist/assets/` | `*.js`, `*.css` |
-| Vue (CLI) | `npm run build` | `dist/js/` | `*.js` |
-| React (Vite) | `npm run build` | `dist/assets/` | `*.js`, `*.css` |
-| React (CRA) | `npm run build` | `build/static/js/` | `*.js` |
-| .NET | `dotnet publish -c Release` | `bin/Release/net*/publish/wwwroot/` | JS/CSS in `_framework/` or bundled assets |
-
-Then list the top JS chunks by size from the output directory:
-
-```bash
-node -e "
-const fs = require('fs');
-const path = require('path');
-function walk(dir) {
-  let r = [];
-  for (const item of fs.readdirSync(dir)) {
-    const full = path.join(dir, item);
-    const stat = fs.statSync(full);
-    if (stat.isDirectory()) r = r.concat(walk(full));
-    else if (item.endsWith('.js')) r.push({ name: item, size: stat.size });
-  }
-  return r;
-}
-const files = walk('<OUTPUT_DIR>').sort((a,b) => b.size - a.size);
-let total = 0;
-files.forEach(f => total += f.size);
-console.log('Top 10 chunks:');
-files.slice(0,10).forEach(f => console.log('  ' + (f.size/1024).toFixed(0) + ' kB  ' + f.name));
-console.log('Total: ' + (total/1024).toFixed(0) + ' kB (' + files.length + ' chunks)');
-"
-```
-
-Replace `<OUTPUT_DIR>` with the correct path for the detected framework.
-
-For **Next.js** with bundle analyzer, optionally run with `ANALYZE=true`:
-```bash
-ANALYZE=true npx next build
-```
+| Framework | Build command | Output directory |
+|-----------|-------------|-----------------|
+| Next.js | `npx next build` | `.next/static/chunks/` |
+| Angular | `ng build` | `dist/<project>/browser/` |
+| Vue (Vite) | `npm run build` | `dist/assets/` |
+| Vue (CLI) | `npm run build` | `dist/js/` |
+| React (Vite) | `npm run build` | `dist/assets/` |
+| React (CRA) | `npm run build` | `build/static/js/` |
+| .NET | `dotnet publish -c Release` | `bin/Release/net*/publish/wwwroot/` |
 
 ### 6. Core Web Vitals
 
-Check for `@vercel/speed-insights` or `web-vitals` in `package.json` dependencies.
-
-If the app is deployed, remind the user to check real-user metrics in their hosting provider's dashboard (Vercel Speed Insights, Google Search Console, etc.).
+Check for `@vercel/speed-insights` or `web-vitals` in `package.json`. If the app is deployed, remind user to check real-user metrics (Vercel Speed Insights, Google Search Console).
 
 ### 7. Interaction Timing (if target is `full` or `interactions`)
 
-Test common UI interactions:
+Test common UI interactions using Playwright timing:
 
-- **Command palette / search**: Measure time from keyboard shortcut (Cmd+K / Ctrl+K) to visible
-- **Modal / dialog opening**: Measure time from click to fully rendered
-- **Navigation transitions**: Measure sidebar link click to new page content visible
-- **Form submissions**: Measure submit to response
+- **Search/command palette**: Keyboard shortcut to visible
+- **Modal/dialog**: Click to fully rendered
+- **Navigation**: Sidebar click to new content visible
+- **Form submit**: Submit to response
 
-Use Playwright's timing APIs:
-```javascript
-const start = Date.now();
-await page.keyboard.press('Control+k');
-await page.waitForSelector('[data-command-palette]', { state: 'visible' });
-const duration = Date.now() - start;
-```
-
-Note: The specific selectors and interactions depend on the application. Adapt the interaction tests based on what the route discovery reveals about the app's UI.
+Adapt selectors based on what route discovery reveals about the app's UI.
 
 ### 8. Comparison with Previous Run
 
-If a previous results file exists (e.g., `perf-audit-results.json`), load it and compare:
-
-- Flag regressions (metrics that got worse by >10%)
+If `perf-audit-results.json` exists, compare metrics:
+- Flag regressions (>10% worse)
 - Highlight improvements
-- Show delta for each metric
+- Show deltas
 
 Save current results for future comparison.
 
 ## Summary Report
 
-Present a comprehensive summary covering:
+Present results covering:
 
-1. **Framework Detected** — Which framework was identified and how
-2. **Page Metrics Table** — All pages with FCP, LCP, CLS, TTFB, DOM count, transfer size
-3. **Lighthouse Scores** — Performance, Accessibility, Best Practices, SEO per page
+1. **Framework Detected** and how
+2. **Page Metrics Table** — FCP, LCP, CLS, TTFB, DOM count, transfer size per page
+3. **Lighthouse Scores** — Performance, Accessibility, Best Practices, SEO
 4. **Bundle Sizes** — Total JS, top 10 chunks
-5. **Interaction Timing** — Command palette, modals, navigation transitions
-6. **Threshold Checks** — Flag any page exceeding:
-   - LCP > 2.5s
-   - FCP > 1.8s
-   - CLS > 0.1
-   - TTFB > 800ms
-7. **Regressions** — Compare with previous run if available
-8. **Recommendations** — Suggest specific fixes for any failing metrics
+5. **Interaction Timing** — If measured
+6. **Threshold Violations** — Any metric exceeding thresholds above
+7. **Regressions** — Delta from previous run if available
+8. **Recommendations** — Specific fixes for failing metrics
+
+## Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Running audit without dev server | Start the server first or check if port is in use |
+| Lighthouse on authenticated page without cookies | Extract cookies from Playwright session and pass via `--extra-headers` |
+| Measuring metrics on first cold load only | Run 2-3 times and average for reliable results |
+| Ignoring CLS because score looks low | CLS accumulates — check individual elements with `layout-shift` entries |
+| Not saving results for regression tracking | Always write `perf-audit-results.json` for future comparison |
+| Bundle analysis on dev build | Always run the production build command, not dev |
