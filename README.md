@@ -20,19 +20,23 @@ The framework is auto-detected. If detection fails, you'll be asked to specify.
 
 When you say "check performance", "run lighthouse", "audit speed", or `/perf-audit:perf-audit`, Claude will:
 
-1. **Auto-detect your framework** (Next.js, Angular, Vue, React, or .NET)
-2. **Discover all routes** in your app automatically
-3. **Measure page load metrics** (FCP, LCP, CLS, TTFB, DOM count, transfer size) using Playwright
-4. **Run Lighthouse audits** (Performance, Accessibility, Best Practices, SEO)
-5. **Analyze bundle size** (top chunks, total JS)
-6. **Flag regressions** against previous runs
-7. **Suggest fixes** for any failing metrics
+1. **Auto-detect your framework** and rendering strategy (SSR/SSG/CSR/ISR)
+2. **Discover all routes** and detect which ones require authentication by reading your codebase
+3. **Smart auth setup** — detects your auth provider (NextAuth, Firebase, Supabase, Clerk, Auth0, Passport, Azure AD, .NET Identity, OAuth) and asks you interactively for credentials
+4. **Measure page load metrics** (FCP, LCP with element identification, CLS with shift sources, TTFB) using Playwright
+5. **Run Lighthouse audits** (Performance, Accessibility, Best Practices, SEO)
+6. **Analyze bundle size** (top chunks, total JS)
+7. **Check image optimization** (lazy loading, dimensions, format, `next/image` usage)
+8. **Analyze third-party scripts** (size, blocking time, async/defer suggestions)
+9. **Check font loading** (font-display strategy, preloading, woff2 format, font count)
+10. **Flag regressions** against previous runs
+11. **Suggest fixes** ranked by impact
 
 ## Targets
 
 | Target | Description |
 |--------|-------------|
-| `full` (default) | Everything: pages, interactions, Lighthouse, bundle |
+| `full` (default) | Everything: pages, interactions, Lighthouse, bundle, image/font/3P checks |
 | `pages` | Page load metrics only |
 | `lighthouse` | Lighthouse audit only |
 | `bundle` | Bundle size analysis only |
@@ -70,34 +74,59 @@ cp skills/perf-audit/SKILL.md ~/.claude/skills/perf-audit/SKILL.md
 
 ## Prerequisites
 
-- **Playwright** installed (`npx playwright install chromium`)
-- For authenticated pages, add test credentials to `.env.local` (or your framework's env file):
-  ```
-  TEST_USER_EMAIL=<email>
-  TEST_USER_PASSWORD=<password>
-  ```
+- **Playwright** — auto-installed if missing (`npx playwright install chromium`)
+- **Node.js 18+** (or .NET SDK 6.0+ for .NET projects)
+- For Angular: Angular CLI (`npm i -g @angular/cli`)
 
-### Framework-specific
+No manual credential setup required — the skill detects your auth provider and asks you interactively.
 
-| Framework | Additional requirement |
-|-----------|----------------------|
-| Next.js | Node.js 18+ |
-| Angular | Node.js 18+, Angular CLI (`npm i -g @angular/cli`) |
-| Vue (Vite/CLI) | Node.js 18+ |
-| React (Vite/CRA) | Node.js 18+ |
-| .NET | .NET SDK 6.0+ |
+## Smart Authentication
+
+The skill reads your codebase to detect protected routes and your auth provider automatically.
+
+**Supported auth providers:**
+
+| Provider | How it's detected |
+|----------|-------------------|
+| NextAuth / Auth.js | `next-auth` or `@auth/core` in deps |
+| Firebase Auth | `firebase` or `@firebase/auth` in deps |
+| Supabase Auth | `@supabase/supabase-js` in deps |
+| Clerk | `@clerk/` in deps |
+| Auth0 | `@auth0/` in deps |
+| Passport.js | `passport` in deps |
+| Azure AD / MSAL | `@azure/msal-` in deps |
+| .NET Identity | `Microsoft.AspNetCore.Identity` in `.csproj` |
+| Custom form-based | Login form detected in code |
+| OAuth/SSO | OAuth buttons detected in login page |
+
+**How it works:**
+1. Scans routes and detects which ones are protected (middleware, guards, wrappers)
+2. Identifies your auth provider from `package.json` / project config
+3. Asks you: "I found N protected routes. Your app uses [provider]. What are your test credentials?"
+4. For OAuth/SSO: offers to accept a session cookie/token instead
+5. Logs in via Playwright and audits all pages including authenticated ones
 
 ## Examples
 
-### Next.js
+### Next.js with NextAuth
 
 ```
 > /perf-audit:perf-audit
 
 Detected: Next.js (found next.config.mjs)
+Rendering: SSR (app router with server components)
 Discovering routes from app/ directory...
 Found 12 routes (3 public, 9 authenticated)
-...
+
+Auth: NextAuth detected (found next-auth in package.json)
+Protected routes use middleware.ts matcher for /dashboard/*
+I found a credentials provider in your NextAuth config.
+What test credentials should I use?
+
+> email: test@example.com, password: test123
+
+Logging in via /auth/signin...
+Login successful. Auditing all 12 routes...
 ```
 
 ### Angular
@@ -107,41 +136,27 @@ Found 12 routes (3 public, 9 authenticated)
 
 Detected: Angular (found angular.json)
 Discovering routes from app.routes.ts...
-Found 10 routes (3 public, 7 authenticated)
-...
+Found 10 routes (3 public, 7 with canActivate guards)
+
+Auth: Custom form-based login detected at /login
+What test credentials should I use?
+
+> username: admin, password: admin123
+
+Logging in... Login successful.
+Auditing all 10 routes...
 ```
 
-### Vue
-
-```
-> /perf-audit:perf-audit
-
-Detected: Vue (Vite) (found vite.config.ts + vue in package.json)
-Discovering routes from src/router/index.ts...
-Found 9 routes (2 public, 7 authenticated)
-...
-```
-
-### React (Vite)
+### React (Vite) with no auth
 
 ```
 > /perf-audit:perf-audit
 
 Detected: React (Vite) (found vite.config.ts + react in package.json)
 Discovering routes from src/router.tsx...
-Found 8 routes (2 public, 6 authenticated)
-...
-```
+Found 6 routes (all public, no auth required)
 
-### .NET
-
-```
-> /perf-audit:perf-audit
-
-Detected: .NET (found MyApp.csproj)
-Discovering routes from Controllers/ and Pages/...
-Found 15 routes (5 public, 10 authenticated)
-...
+Auditing all 6 routes...
 ```
 
 ## Thresholds
@@ -159,15 +174,33 @@ The skill flags any page exceeding:
 
 ```
 Framework: Next.js (auto-detected)
+Rendering: SSR (server components) | 3 SSG pages | 1 CSR page
 
-| Page        | FCP    | LCP    | CLS   | TTFB   | DOM  | Transfer |
-|-------------|--------|--------|-------|--------|------|----------|
-| /           | 0.8s   | 1.2s   | 0.01  | 120ms  | 450  | 245 kB   |
-| /projects   | 0.9s   | 1.5s   | 0.02  | 135ms  | 620  | 312 kB   |
-| /tasks      | 1.1s   | 1.8s   | 0.00  | 142ms  | 580  | 298 kB   |
+Page Metrics (warm cache):
+| Page        | FCP    | LCP    | LCP Element | CLS   | TTFB   | DOM  | Transfer |
+|-------------|--------|--------|-------------|-------|--------|------|----------|
+| /           | 0.8s   | 1.2s   | <img>       | 0.01  | 120ms  | 450  | 245 kB   |
+| /projects   | 0.9s   | 1.5s   | <h1>        | 0.02  | 135ms  | 620  | 312 kB   |
+| /dashboard  | 1.1s   | 1.8s   | <div>       | 0.00  | 142ms  | 580  | 298 kB   |
 
 Lighthouse: Performance 92 | Accessibility 98 | Best Practices 100 | SEO 100
 Bundle: 487 kB total (142 chunks)
+
+Image Issues:
+- /projects: 3 images missing loading="lazy"
+- /dashboard: hero image using <img> instead of next/image (245 kB, not optimized)
+
+Third-Party Scripts:
+- Google Analytics: 28 kB (async)
+- Intercom widget: 89 kB (render-blocking!) — suggest dynamic import
+
+Font Loading:
+- 2 fonts loaded, all woff2, font-display: swap — OK
+
+Recommendations:
+1. Convert hero image to next/image with priority prop (fixes LCP on /dashboard)
+2. Lazy-load Intercom widget after page interactive (saves 89 kB blocking JS)
+3. Add loading="lazy" to below-fold images on /projects
 ```
 
 ## Plugin Structure
